@@ -6,7 +6,7 @@ on: workflow_dispatch
 #      tags:
 #         - 'v**'
    # Allow running manually from the actions tab
-   workflow_dispatch:
+   #workflow_dispatch:
    #    inputs:
    #       message:
    #           description: Input Version (ex. v0.7.4)
