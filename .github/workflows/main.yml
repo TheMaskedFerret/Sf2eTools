@@ -6,7 +6,7 @@ on: workflow_dispatch
 #      tags:
 #         - 'v**'
    # Allow running manually from the actions tab
-   # workflow_dispatch:
+   workflow_dispatch:
    #    inputs:
    #       message:
    #           description: Input Version (ex. v0.7.4)
@@ -14,11 +14,13 @@ on: workflow_dispatch
 
 env:
    # See: https://docs.github.com/en/packages/managing-github-packages-using-github-actions-workflows/publishing-and-installing-a-package-with-github-actions#upgrading-a-workflow-that-accesses-ghcrio
-   IMAGE_NAME: pf2etools
+   IMAGE_NAME: ${{ vars.APP_NAME }}
+   VET_BASE_SITE_URL: ${{ github.ref_name == 'main' && vars.VET_BASE_SITE_URL_PROD || vars.VET_BASE_SITE_URL_DEV }}
+   VET_SEO_IS_SKIP_UA_ETC: true 
 
-concurrency:
-   group: "release"
-   cancel-in-progress: true
+#concurrency:
+#   group: "release"
+#   cancel-in-progress: true
 
 jobs:
    build-and-deploy:
@@ -26,8 +28,8 @@ jobs:
       steps:
          -  uses: actions/checkout@master
 
-         -  name: Clear caches
-            uses: easimon/wipe-cache@main
+         #-  name: Clear caches
+         #   uses: easimon/wipe-cache@main
 
          # See: https://stackoverflow.com/a/58178121
          -  name: Set Release Version
@@ -44,7 +46,7 @@ jobs:
 
          -  name: Archive Release
             run: |
-               zip -r pf2ools-${{ env.RELEASE_VERSION }}.zip . -x '*.git*' '*node_modules*' '*.github*' '*img*' '*.editorconfig*' '*CNAME*' 'RELEASE_NOTES.md'
+               zip -r ${{ env.IMAGE_NAME }}-${{ env.RELEASE_VERSION }}.zip . -x '*.git*' '*node_modules*' '*.github*' '*img*' '*.editorconfig*' '*CNAME*' 'RELEASE_NOTES.md'
          -  name: Set Deployed Flag
             run: |
                bash ./.github/set-deployed-flag.sh ${{ env.RELEASE_VERSION }}
@@ -58,28 +60,37 @@ jobs:
                npm run build
          # Builds SEO pages
          -  name: Build SEO Pages
-            env:
-               VET_BASE_SITE_URL: https://pf2etools.com/
-               VET_SEO_IS_SKIP_UA_ETC: true
+            #env:
+            #   VET_BASE_SITE_URL: https://pf2etools.com/
+            #   VET_SEO_IS_SKIP_UA_ETC: true
             run: |
                npm run build:seo -- ${{ env.RELEASE_VERSION }}
          # Merge and minify scripts, data, etc. + Build Service Worker
          # Remove entries from the `.gitignore` so the gh-pages action can correctly add+commit them to the pages branch
          -  name: Build Prod
-            env:
-               VET_BASE_SITE_URL: https://pf2etools.com/
-               VET_SEO_IS_SKIP_UA_ETC: true
+            #env:
+            #   VET_BASE_SITE_URL: https://pf2etools.com/
+            #   VET_SEO_IS_SKIP_UA_ETC: true
             run: |
                npm run build:deploy:prod -- ${{ env.RELEASE_VERSION }}
                sed -i 's/sitemap.xml//g' .gitignore
                sed -i 's/sw.js//g' .gitignore
                sed -i 's/sw-injector.js//g' .gitignore
          # See: https://github.com/JamesIves/github-pages-deploy-action
-         -  name: Deploy
-            uses: JamesIves/github-pages-deploy-action@releases/v4
-            with:
-               branch: prod
-               folder: .
+        # -  name: Deploy
+        #    uses: JamesIves/github-pages-deploy-action@releases/v4
+         #   with:
+         #      branch: prod
+         #      folder: .
+
+         - name: 📂 Sync files
+           uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+           with:
+              branch: prod
+              server: ${{ secrets.ftp_server }}
+              username: ${{ secrets.ftp_username }}
+              password: ${{ secrets.ftp_password }}
+              server-dir: ${{ env.FTP_DESTINATION_SERVER_DIR }}
 
          -  name: Archive Images
             run: |
@@ -88,7 +99,7 @@ jobs:
             continue-on-error: true
             # Add the files one-by-one in an effort to avoid timeouts
             run: |
-               hub release create -a pf2ools-${{ env.RELEASE_VERSION }}.zip -F RELEASE_NOTES.md ${{ env.RELEASE_VERSION }}
+               hub release create -a ${{ vars.APP_NAME }}-${{ env.RELEASE_VERSION }}.zip -F RELEASE_NOTES.md ${{ env.RELEASE_VERSION }}
                for f in $(find . -name 'img-${{ env.RELEASE_VERSION }}.*' -print); do hub release edit ${{ env.RELEASE_VERSION }} -m '' -a $f; done
             env:
                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -119,4 +130,4 @@ jobs:
          # endregion
 
          - name: Post Changelogs to Discord
-           run: bash ./.github/discord.sh --webhook-url="${{ secrets.DISCORD_WEBHOOK }}" --text "<@&901146147480043520>" --title "Version $(head -n 1 RELEASE_NOTES.md)" --description "$(jq -Rs . <<< $(tail -n +2 "RELEASE_NOTES.md") | cut -c 2- | rev | cut -c 2- | rev)" --color "0x6f1c17" --url "https://github.com/Pf2eToolsOrg/Pf2eTools/releases/tag/${{ env.RELEASE_VERSION }}" --timestamp
+           run: bash ./.github/discord.sh --webhook-url="${{ secrets.DISCORD_WEBHOOK }}" --text "${{ vars.DISCORD_NOTIFY_ROLE }} ${{ vars.APP_NAME }} Build And Deploy ${{ env.RELEASE_VERSION }} from ${{ github.ref_name }} to ${{ env.VET_BASE_SITE_URL }}" --title "Version $(head -n 1 RELEASE_NOTES.md)" --description "$(jq -Rs . <<< $(tail -n +2 "RELEASE_NOTES.md") | cut -c 2- | rev | cut -c 2- | rev)" --color "0x6f1c17" --url "https://github.com/${{ github.GITHUB_REPOSITORY }}/releases/tag/${{ env.RELEASE_VERSION }}" --timestamp
