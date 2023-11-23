@@ -6,7 +6,7 @@ async function main () {
 
 	if (!fs.existsSync("search")) {
 		console.log("Creating search folder.");
-		fs.mkdirSync("search");
+		fs.mkdirSync("../search");
 	}
 
 	const index = await utS.UtilSearchIndex.pGetIndex();
