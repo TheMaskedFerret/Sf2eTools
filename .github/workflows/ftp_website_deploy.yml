@@ -1,0 +1,31 @@
+env:
+  FTP_DESTINATION_SERVER_DIR: ${{ github.ref_name == 'main' && vars.FTP_DESTINATION_SERVER_DIR_PROD || vars.FTP_DESTINATION_SERVER_DIR_DEV }}
+  VET_BASE_SITE_URL: ${{ github.ref_name == 'main' && vars.VET_BASE_SITE_URL_PROD || vars.VET_BASE_SITE_URL_DEV }}
+
+#on: push
+on: workflow_dispatch
+name: 🚀 Deploy website on push
+jobs:
+  web-deploy:
+    name: 🎉 Deploy  ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: 🚚 Get latest code
+      uses: actions/checkout@v4
+    
+    - name: 📂 Sync files
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      with:
+        server: ${{ secrets.ftp_server }}
+        username: ${{ secrets.ftp_username }}
+        password: ${{ secrets.ftp_password }}
+        server-dir: ${{ env.FTP_DESTINATION_SERVER_DIR }}
+        exclude: |
+          **/.git*
+          **/.git*/**
+          **/historical/**
+          **/node_modules/**
+          **/templates/**
+          
+    - name: Post Changelogs to Discord
+      run: bash ./.github/build/discord.sh --webhook-url="${{ secrets.DISCORD_WEBHOOK }}" --text "${{ vars.DISCORD_NOTIFY_ROLE }} ${{ vars.APP_NAME }} FTP Website Deploy ${{ env.RELEASE_VERSION }} from ${{ github.ref_name }} to ${{ env.VET_BASE_SITE_URL }}" --title "Version $(head -n 1 RELEASE_NOTES.md)" --description "$(jq -Rs . <<< $(tail -n +2 "RELEASE_NOTES.md") | cut -c 2- | rev | cut -c 2- | rev)" --color "0x6f1c17" --url "https://github.com/${{ github.GITHUB_REPOSITORY }}/releases/tag/${{ env.RELEASE_VERSION }}" --timestamp
